@@ -4,6 +4,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { registerSchema, loginSchema } from "../validations/auth.schema";
 import { z } from "zod";
+import { AuthRequest } from "../middleware/authenticate";
 import { env } from "../constants/env";
 
 export const register = async (req: Request, res: Response) => {
@@ -37,40 +38,48 @@ export const register = async (req: Request, res: Response) => {
 
 export const login = async (req: Request, res: Response) => {
   try {
-    // Validate input
     const { username, password } = loginSchema.parse(req.body);
 
-    // Find user by username
     const user = await User.findOne({ username });
-    if (!user) {
+    if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    // Compare passwords
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ message: "Invalid credentials" });
-    }
+    const payload = { id: user._id, username: user.username };
 
-    // Create JWT payload and sign token
-    const token = jwt.sign(
-      { id: user._id, username: user.username },
-      env.JWT_SECRET,
-      { expiresIn: "1h" }
-    );
-
-    // Send token (you can also send in cookie if you want)
-    return res.json({
-      message: "Login successful",
-      token,
-      user: { id: user._id, username: user.username },
+    const accessToken = jwt.sign(payload, env.JWT_SECRET, { expiresIn: "15m" });
+    const refreshToken = jwt.sign(payload, env.REFRESH_TOKEN_SECRET, {
+      expiresIn: "7d",
     });
+
+    res
+      .cookie("token", accessToken, {
+        httpOnly: true,
+        sameSite: "lax",
+        maxAge: 1000 * 60 * 15, // 15 minutes
+      })
+      .cookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        sameSite: "lax",
+        maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+      })
+      .status(200)
+      .json({ message: "Login successful", user: payload });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res
         .status(400)
         .json({ message: "Validation failed", errors: error.errors });
     }
+
     return res.status(500).json({ message: "Internal Server Error" });
   }
+};
+
+export const getProfile = (req: AuthRequest, res: Response) => {
+  // req.user is guaranteed to exist if middleware passed
+  return res.json({
+    message: `Hello ${req.user?.username}`,
+    userId: req.user?.id,
+  });
 };

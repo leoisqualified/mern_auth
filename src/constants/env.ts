@@ -8,6 +8,8 @@ const envSchema = z.object({
   PORT: z.string().optional(),
   JWT_SECRET: z.string().min(10),
   APP_ORIGIN: z.string().url(),
+  REFRESH_TOKEN_SECRET: z.string().min(10)
+
 });
 
 const _env = envSchema.safeParse(process.env);
