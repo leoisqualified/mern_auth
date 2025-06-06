@@ -13,7 +13,6 @@ const PORT = env.PORT || 5000;
 app.use(express.json());
 app.use(cookieParser());
 
-
 // connectDB
 connectDb();
 
